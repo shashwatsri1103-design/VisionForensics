@@ -1,10 +1,4 @@
-"""
-modules/ai_classifier.py  v2
-Primary AI vs Real detection using a pretrained CLIP-based classifier.
-Model: umm-maybe/AI-image-detector (fine-tuned CLIP ViT-L/14)
-
-Cache directory is set explicitly to C:\hfc to avoid Windows 260-char path limit.
-"""
+"""Optional AI-image ensemble for slower, higher-signal analysis."""
 import os
 
 # Must be set BEFORE transformers is imported anywhere
@@ -19,7 +13,7 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 from PIL import Image
 
-MODEL_ID_1 = "prithivMLmods/Deep-Fake-Detector-v2-Model"
+MODEL_ID_1 = "Ateeqq/ai-vs-human-image-detector"
 MODEL_ID_2 = "dima806/deepfake_vs_real_image_detection"
 
 def _get_pipelines():
