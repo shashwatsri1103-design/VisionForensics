@@ -61,13 +61,12 @@ def test_visual_watermark_is_not_treated_as_authenticated_provenance():
 
     assert result["watermark_detected"]
     assert not result["watermark_origin_verified"]
-    assert result["ai_pct"] >= baseline["ai_pct"] + 25
-    assert result["ai_pct"] >= 85
-    assert result["module_scores"]["watermark"]["weight"] == 0.6
+    assert baseline["ai_pct"] + 10 <= result["ai_pct"] <= baseline["ai_pct"] + 20
+    assert result["module_scores"]["watermark"]["weight"] == 0.15
 
     fast_result = compute(empty, empty, empty, empty, empty, face, mark)
     assert not fast_result["ml_available"]
-    assert fast_result["ai_pct"] >= 85
+    assert fast_result["ai_pct"] < 20
 
 
 def test_editor_software_metadata_reduces_watermark_contribution():
@@ -90,7 +89,7 @@ def test_editor_software_metadata_reduces_watermark_contribution():
 
     assert result["possible_watermark_edit"]
     assert result["watermark_editing_software"] == "Adobe Photoshop"
-    assert result["module_scores"]["watermark"]["weight"] == 0.08
+    assert result["module_scores"]["watermark"]["weight"] == 0.02
     assert result["ai_pct"] < baseline["ai_pct"] + 10
 
 
@@ -112,4 +111,4 @@ def test_high_ela_variance_reduces_watermark_contribution():
 
     assert result["possible_watermark_edit"]
     assert "high ELA variance" in result["watermark_edit_reason"]
-    assert result["module_scores"]["watermark"]["weight"] == 0.08
+    assert result["module_scores"]["watermark"]["weight"] == 0.02
