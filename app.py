@@ -17,17 +17,13 @@ from modules import watermark as wm_mod, ela as ela_mod
 import modules.ai_classifier as ac_mod
 
 @st.cache_resource(show_spinner="⏳ Loading AI Detection Model (one-time ~1-3 mins)...")
-def load_ml_pipe():
-    """Cache the HuggingFace pipeline — loaded once per server session."""
-    import os as _os
-    _os.environ.setdefault("HF_HOME", r"C:\hfc")
-    _os.environ.setdefault("TRANSFORMERS_CACHE", r"C:\hfc\hub")
-    
+def load_ml_pipe(model_id_1: str, model_id_2: str):
+    """Cache pipelines by model IDs so changing detectors invalidates the cache."""
     # Do NOT wrap this in a try/except that returns None!
     # If we return None on a network timeout, Streamlit caches 'None' permanently
     # for the rest of the session. By letting the exception raise, the user can 
     # just refresh the page to try the download again.
-    return ac_mod._get_pipelines()
+    return ac_mod._get_pipelines(model_id_1, model_id_2)
 
 # ── Page config ────────────────────────────────────────────────────────────
 st.set_page_config(page_title="VisionForensics AI", page_icon="🔬",
@@ -229,11 +225,11 @@ with prev_col:
     use_ml_classifier = st.toggle(
       "Use pretrained ML classifier",
       value=False,
-      help="Loads two AI models from Hugging Face. The first run downloads them and may take a few minutes.",
+      help="Loads two image classifiers from Hugging Face. The first run downloads them and may take a few minutes.",
     )
 
 # ── Analyse ───────────────────────────────────────────────────────────────
-    ml_pipes = load_ml_pipe() if use_ml_classifier else None
+    ml_pipes = load_ml_pipe(ac_mod.MODEL_ID_1, ac_mod.MODEL_ID_2) if use_ml_classifier else None
 with st.spinner("🔍 Running forensic modules…"):
     mr = meta_mod.analyze(pil_img, fsz)
     er = ela_mod.analyze(pil_rgb)
