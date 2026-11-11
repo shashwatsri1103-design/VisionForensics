@@ -103,6 +103,8 @@ def compute(meta_result, ela_result, fft_result, noise_result, jpeg_result,
         # heavily discounted. This keeps the heuristic honest without capping
         # clean AI-generated images at ~85%.
         ai_prob = min(0.98, ai_prob + (wm_score * wm_weight) + (0.10 if not possible_watermark_edit else 0.0))
+        if not possible_watermark_edit and wm_score >= 0.70:
+            ai_prob = max(ai_prob, 0.85)
 
     real_prob = 1.0 - ai_prob
     ai_pct    = round(ai_prob * 100)
