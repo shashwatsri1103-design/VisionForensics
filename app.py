@@ -2,7 +2,7 @@
 app.py – VisionForensics AI v2
 Run with: streamlit run app.py
 """
-import importlib, io, math, os, sys
+import io, math, os, sys
 import numpy as np
 import streamlit as st
 from PIL import Image
@@ -15,8 +15,6 @@ from modules import metadata as meta_mod, fft as fft_mod, noise as noise_mod
 from modules import jpeg as jpeg_mod, face as face_mod, report as report_mod
 from modules import watermark as wm_mod, ela as ela_mod
 import modules.ai_classifier as ac_mod
-for _m in (meta_mod, fft_mod, noise_mod, jpeg_mod, face_mod, report_mod, wm_mod, ela_mod, ac_mod):
-    importlib.reload(_m)
 
 @st.cache_resource(show_spinner="⏳ Loading AI Detection Model (one-time ~1-3 mins)...")
 def load_ml_pipe():
