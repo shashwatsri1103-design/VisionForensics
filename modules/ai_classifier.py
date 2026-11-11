@@ -1,12 +1,15 @@
 """Optional AI-image ensemble for slower, higher-signal analysis."""
 import os
 
-# Must be set BEFORE transformers is imported anywhere
-_CACHE = r"C:\hfc"
+# Keep model downloads outside the watched source tree, especially on Linux.
+_CACHE = os.environ.get("HF_HOME") or (
+    r"C:\hfc" if os.name == "nt"
+    else os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+)
 os.makedirs(_CACHE, exist_ok=True)
-os.environ["HF_HOME"]              = _CACHE
-os.environ["TRANSFORMERS_CACHE"]   = os.path.join(_CACHE, "t")
-os.environ["HF_HUB_CACHE"]         = os.path.join(_CACHE, "hub")
+os.environ.setdefault("HF_HOME", _CACHE)
+os.environ.setdefault("TRANSFORMERS_CACHE", os.path.join(_CACHE, "hub"))
+os.environ.setdefault("HF_HUB_CACHE", os.path.join(_CACHE, "hub"))
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
@@ -16,14 +19,14 @@ from PIL import Image
 MODEL_ID_1 = "Ateeqq/ai-vs-human-image-detector"
 MODEL_ID_2 = "dima806/deepfake_vs_real_image_detection"
 
-def _get_pipelines():
+def _get_pipelines(model_id_1: str = MODEL_ID_1, model_id_2: str = MODEL_ID_2):
     """Load and return an ensemble of HuggingFace pipelines. Heavy – cache with st.cache_resource."""
     from transformers import pipeline as hf_pipeline
     import transformers.utils.logging as hf_logging
     hf_logging.disable_progress_bar()
     
-    pipe1 = hf_pipeline("image-classification", model=MODEL_ID_1)
-    pipe2 = hf_pipeline("image-classification", model=MODEL_ID_2)
+    pipe1 = hf_pipeline("image-classification", model=model_id_1)
+    pipe2 = hf_pipeline("image-classification", model=model_id_2)
     return (pipe1, pipe2)
 
 
