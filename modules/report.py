@@ -1,8 +1,4 @@
-"""
-modules/report.py  — v4
-ML classifier is the primary signal (50% weight when available).
-Watermark detection is a hard override.
-"""
+"""Combine image-analysis scores with a limited visual-watermark contribution."""
 
 # Weights when ML classifier IS available
 WEIGHTS_ML = {
@@ -25,8 +21,8 @@ WEIGHTS_HEURISTIC = {
     "face":     0.20,
 }
 
-WATERMARK_WEIGHT = 0.60
-EDITED_WATERMARK_WEIGHT = 0.08
+WATERMARK_WEIGHT = 0.15
+EDITED_WATERMARK_WEIGHT = 0.02
 EDITING_SOFTWARE = (
     "photoshop", "lightroom", "gimp", "affinity photo", "paint.net",
     "pixelmator", "canva", "snapseed", "picsart", "photopea",
@@ -92,19 +88,12 @@ def compute(meta_result, ela_result, fft_result, noise_result, jpeg_result,
     ai_prob = sum(scores[k] * weights.get(k, 0.0) for k in scores) / (total_w + 1e-9)
     ai_prob = float(max(0.0, min(1.0, ai_prob)))
 
-    # A visual mark is weak evidence: it can be copied onto another image.
     if wm_detected:
         wm_weight = EDITED_WATERMARK_WEIGHT if possible_watermark_edit else WATERMARK_WEIGHT
         wm_score = float(watermark_result.get("score", 0.0))
         weights["watermark"] = wm_weight
-        # A clean watermark is strong supporting evidence, but it is still not
-        # authenticated provenance. It should raise the AI score materially when
-        # there are no editing signs, while edited or photoshopped marks remain
-        # heavily discounted. This keeps the heuristic honest without capping
-        # clean AI-generated images at ~85%.
-        ai_prob = min(0.98, ai_prob + (wm_score * wm_weight) + (0.10 if not possible_watermark_edit else 0.0))
-        if not possible_watermark_edit and wm_score >= 0.70:
-            ai_prob = max(ai_prob, 0.85)
+        # A visual mark can be copied, so it must not overwhelm image evidence.
+        ai_prob = min(1.0, ai_prob + wm_score * wm_weight)
 
     real_prob = 1.0 - ai_prob
     ai_pct    = round(ai_prob * 100)
