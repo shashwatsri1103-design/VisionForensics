@@ -65,6 +65,10 @@ def test_visual_watermark_is_not_treated_as_authenticated_provenance():
     assert result["ai_pct"] >= 85
     assert result["module_scores"]["watermark"]["weight"] == 0.6
 
+    fast_result = compute(empty, empty, empty, empty, empty, face, mark)
+    assert not fast_result["ml_available"]
+    assert fast_result["ai_pct"] >= 85
+
 
 def test_editor_software_metadata_reduces_watermark_contribution():
     metadata = {"score": 0.0, "flags": [], "software": "Adobe Photoshop"}
