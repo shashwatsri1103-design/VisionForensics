@@ -167,8 +167,10 @@ def radar_img(ms):
     return Image.open(buf).copy()
 
 HIGH_KW = ["no exif","no camera","no capture","grid artifact","high-frequency","low noise",
-           "smooth","power law","asymmetr","misalign","re-encode","ai tool","png format","webp format"]
-MED_KW  = ["below-average","multiple face","uniform","high file density","high re-encode"]
+           "smooth","power law","asymmetr","misalign","re-encode","ai tool","png format","webp format",
+           "no shot-noise correlation"]
+MED_KW  = ["below-average","multiple face","uniform","high file density","high re-encode",
+           "inference error","analysis skipped","not loaded","uncertain"]
 
 def ev_class(text):
     t = text.lower()
