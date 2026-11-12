@@ -35,10 +35,10 @@ def compute(meta_result, ela_result, fft_result, noise_result, jpeg_result,
     if watermark_result is None:
         watermark_result = {"score": 0.0, "detected": False, "flags": []}
     if ml_result is None:
-        ml_result = {"score": 0.0, "ai_prob": 0.0, "real_prob": 1.0,
+        ml_result = {"score": 0.0, "ai_prob": 0.0, "deepfake_prob": 0.0, "real_prob": 1.0,
                      "flags": [], "available": False}
 
-    ml_available = ml_result.get("available", False)
+    ml_available, deepfake_prob = ml_result.get("available", False), float(ml_result.get("deepfake_prob", 0.0) or 0.0)
     wm_detected = watermark_result.get("detected", False)
     software = (meta_result.get("software") or "").strip()
     software_lower = software.lower()
@@ -100,8 +100,8 @@ def compute(meta_result, ela_result, fft_result, noise_result, jpeg_result,
     real_pct  = 100 - ai_pct
 
     # ── Verdict ───────────────────────────────────────────────────────────
-    if ai_prob >= 0.60:
-        verdict = "Likely AI Generated"
+    if ai_prob >= 0.60 or (ml_available and deepfake_prob >= 0.60 and deepfake_prob >= ml_result.get("ai_prob", 0.0)):
+        verdict = "Likely Deepfake / Manipulated" if ml_available and deepfake_prob >= 0.60 and deepfake_prob >= ml_result.get("ai_prob", 0.0) else "Likely AI Generated"
     elif ai_prob <= 0.35:
         verdict = "Likely Real Photo"
     else:
@@ -109,9 +109,9 @@ def compute(meta_result, ela_result, fft_result, noise_result, jpeg_result,
 
     # ── Confidence ────────────────────────────────────────────────────────
     margin = abs(ai_prob - 0.5)
-    if ml_available and margin > 0.35:
+    if ml_available and (margin > 0.35 or deepfake_prob >= 0.85):
         confidence = "High"
-    elif margin > 0.18:
+    elif margin > 0.18 or (ml_available and deepfake_prob >= 0.60):
         confidence = "Medium"
     else:
         confidence = "Low"
@@ -162,5 +162,5 @@ def compute(meta_result, ela_result, fft_result, noise_result, jpeg_result,
         possible_watermark_edit = possible_watermark_edit,
         watermark_editing_software = software if possible_watermark_edit else None,
         watermark_edit_reason = watermark_edit_reason,
-        ml_available = ml_available,
+        ml_available = ml_available, deepfake_probability = round(deepfake_prob, 4),
     )
