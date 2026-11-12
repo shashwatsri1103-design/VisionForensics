@@ -17,13 +17,13 @@ from modules import watermark as wm_mod, ela as ela_mod
 import modules.ai_classifier as ac_mod
 
 @st.cache_resource(show_spinner="⏳ Loading AI Detection Model (one-time ~1-3 mins)...")
-def load_ml_pipe(model_id_1: str, model_id_2: str):
-    """Cache pipelines by model IDs so changing detectors invalidates the cache."""
+def load_ml_pipe():
+    """Load and cache the pretrained classifier once per server session."""
     # Do NOT wrap this in a try/except that returns None!
     # If we return None on a network timeout, Streamlit caches 'None' permanently
     # for the rest of the session. By letting the exception raise, the user can 
     # just refresh the page to try the download again.
-    return ac_mod._get_pipelines(model_id_1, model_id_2)
+    return ac_mod._get_pipeline()
 
 # ── Page config ────────────────────────────────────────────────────────────
 st.set_page_config(page_title="VisionForensics AI", page_icon="🔬",
@@ -224,12 +224,12 @@ with prev_col:
     # Keep the fast forensic signals available without waiting for model downloads.
     use_ml_classifier = st.toggle(
       "Use pretrained ML classifier",
-      value=False,
-      help="Loads two image classifiers from Hugging Face. The first run downloads them and may take a few minutes.",
+      value=True,
+      help="Loads one AI-generated/deepfake/real classifier from Hugging Face. First use downloads it and may take a few minutes.",
     )
 
 # ── Analyse ───────────────────────────────────────────────────────────────
-    ml_pipes = load_ml_pipe(ac_mod.MODEL_ID_1, ac_mod.MODEL_ID_2) if use_ml_classifier else None
+    ml_pipe = load_ml_pipe() if use_ml_classifier else None
 with st.spinner("🔍 Running forensic modules…"):
     mr = meta_mod.analyze(pil_img, fsz)
     er = ela_mod.analyze(pil_rgb)
@@ -238,7 +238,7 @@ with st.spinner("🔍 Running forensic modules…"):
     jr = jpeg_mod.analyze(pil_rgb, fsz, fmt)
     fc = face_mod.analyze(pil_rgb)
     wr = wm_mod.detect_sparkle(pil_rgb)
-    cr = ac_mod.analyze(pil_rgb, pipes=ml_pipes)
+    cr = ac_mod.analyze(pil_rgb, pipe=ml_pipe)
     rr = report_mod.compute(mr, er, fr, nr, jr, fc, wr, cr)
 
 ai_pct  = rr["ai_pct"]
@@ -262,9 +262,9 @@ t_ov, t_meta, t_ela, t_fft, t_noise, t_jpeg, t_face = st.tabs(
 with t_ov:
     # ── ML classifier banner ──────────────────────────────────────
     if ml_ok:
-        ml_ai  = int(cr["ai_prob"]*100)
+        ml_ai = int(cr["ai_prob"] * 100)
         ml_lbl = cr.get("label", "")
-        ml_col = "#ef4444" if ml_ai>=65 else "#34d399" if ml_ai<=35 else "#fb923c"
+        ml_col = "#ef4444" if max(cr["ai_prob"], cr.get("deepfake_prob", 0.0)) >= 0.65 else "#34d399" if cr["real_prob"] >= 0.65 else "#fb923c"
         st.markdown(f"""
         <div style="background:rgba(99,179,237,.07);border:1px solid rgba(99,179,237,.2);
           border-radius:12px;padding:.75rem 1.1rem;margin-bottom:.7rem;display:flex;
@@ -272,15 +272,15 @@ with t_ov:
           <span style="font-size:1.3rem;">🤖</span>
           <div style="flex:1;">
             <span style="color:#93c5fd;font-weight:700;font-size:.85rem;">
-              Pretrained ML Classifier (Dual-Model Ensemble):</span>&nbsp;
-            <span style="color:{ml_col};font-weight:800;font-size:.95rem;">{ml_ai}% AI</span>&nbsp;
+              Pretrained ML Classifier:</span>&nbsp;
+            <span style="color:{ml_col};font-weight:800;font-size:.95rem;">{ml_ai}% AI-generated · {int(cr.get("deepfake_prob", 0.0)*100)}% deepfake · {int(cr["real_prob"]*100)}% real</span>&nbsp;
             <span style="color:#475569;font-size:.8rem;">— {ml_lbl}</span>
           </div>
           <span style="color:#1e40af;font-size:.7rem;background:#1e3a5f;padding:.2rem .5rem;
             border-radius:5px;font-weight:700;">PRIMARY SIGNAL</span>
         </div>""", unsafe_allow_html=True)
     else:
-      st.info("Fast heuristic analysis is active. Enable the pretrained classifier above for the slower ML ensemble.")
+      st.info("Fast heuristic analysis is active. Enable the pretrained classifier above for model-based image scores.")
 
     # ── Watermark alert banner ────────────────────────────────────────────
     if wm_detected:
