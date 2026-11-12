@@ -1,10 +1,10 @@
-"""Optional AI-image ensemble for slower, higher-signal analysis."""
+"""Classify images as AI-generated, deepfake/manipulated, or real."""
 import os
 
-# Keep model downloads outside the watched source tree, especially on Linux.
-_CACHE = os.environ.get("HF_HOME") or (
-    r"C:\hfc" if os.name == "nt"
-    else os.path.join(os.path.expanduser("~"), ".cache", "huggingface")
+_CACHE = (
+    os.environ.get("VISIONFORENSICS_CACHE")
+    or os.environ.get("HF_HOME")
+    or (r"C:\hfc" if os.name == "nt" else os.path.join(os.path.expanduser("~"), ".cache", "huggingface"))
 )
 os.makedirs(_CACHE, exist_ok=True)
 os.environ.setdefault("HF_HOME", _CACHE)
@@ -16,92 +16,100 @@ os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 from PIL import Image
 
-MODEL_ID_1 = "Ateeqq/ai-vs-human-image-detector"
-MODEL_ID_2 = "dima806/deepfake_vs_real_image_detection"
+MODEL_ID = "prithivMLmods/AI-vs-Deepfake-vs-Real-v2.0"
 
-def _get_pipelines(model_id_1: str = MODEL_ID_1, model_id_2: str = MODEL_ID_2):
-    """Load and return an ensemble of HuggingFace pipelines. Heavy – cache with st.cache_resource."""
+
+def _get_pipeline():
+    """Load the image classifier. Heavy — cache with st.cache_resource."""
     from transformers import pipeline as hf_pipeline
     import transformers.utils.logging as hf_logging
     hf_logging.disable_progress_bar()
-    
-    pipe1 = hf_pipeline("image-classification", model=model_id_1)
-    pipe2 = hf_pipeline("image-classification", model=model_id_2)
-    return (pipe1, pipe2)
+    return hf_pipeline("image-classification", model=MODEL_ID)
 
 
-def analyze(pil_image: Image.Image, pipes=None) -> dict:
-    """
-    Run the pretrained AI image classifier ensemble.
-    Pass `pipes` from st.cache_resource to avoid reloading the models.
-    """
-    flags = []
+def _classify_label(label: str) -> str:
+    normalized = label.strip().lower().replace("_", " ").replace("-", " ")
+    if "deepfake" in normalized or "manipulated" in normalized:
+        return "deepfake"
+    if any(term in normalized for term in ("artificial", "synthetic", "generated")):
+        return "artificial"
+    if normalized == "ai":
+        return "artificial"
+    if "real" in normalized or "authentic" in normalized:
+        return "real"
+    raise ValueError(f"Unrecognized classifier label: {label}")
 
-    if pipes is None or len(pipes) != 2:
+
+def _class_probabilities(results: list[dict]) -> dict[str, float]:
+    probabilities = {"artificial": 0.0, "deepfake": 0.0, "real": 0.0}
+    found = set()
+    for result in results:
+        category = _classify_label(result["label"])
+        probability = float(result["score"])
+        if not 0.0 <= probability <= 1.0:
+            raise ValueError(f"Invalid classifier probability for {result['label']}")
+        probabilities[category] += probability
+        found.add(category)
+
+    missing = set(probabilities) - found
+    if missing:
+        raise ValueError(f"Classifier output is missing classes: {', '.join(sorted(missing))}")
+    total = sum(probabilities.values())
+    if total <= 0.0:
+        raise ValueError("Classifier returned zero probability for every class")
+    return {key: value / total for key, value in probabilities.items()}
+
+
+def analyze(pil_image: Image.Image, pipe=None) -> dict:
+    """Run the pretrained three-class classifier using a cached pipeline."""
+    if pipe is None:
         return {
-            "score": 0.0, "ai_prob": 0.0, "real_prob": 1.0,
-            "flags": ["⚠ ML classifiers not loaded — results are heuristic only"],
+            "score": 0.0, "ai_prob": 0.0, "deepfake_prob": 0.0, "real_prob": 1.0,
+            "flags": ["⚠ ML classifier not loaded — results are heuristic only"],
             "available": False, "label": "unavailable",
         }
 
     try:
-        img_rgb = pil_image.convert("RGB").resize((224, 224))
-        
-        # Run inference on both models
-        res1 = pipes[0](img_rgb)
-        res2 = pipes[1](img_rgb)
+        probabilities = _class_probabilities(pipe(pil_image.convert("RGB"), top_k=None))
+        ai_prob = probabilities["artificial"]
+        deepfake_prob = probabilities["deepfake"]
+        real_prob = probabilities["real"]
+        flags = [
+            "ML class probabilities — "
+            f"AI-generated: {ai_prob:.1%}; deepfake/manipulated: {deepfake_prob:.1%}; real: {real_prob:.1%}"
+        ]
 
-        def _get_ai_prob(results, ai_keywords):
-            a_p = 0.0
-            r_p = 0.0
-            for r in results:
-                lbl = r["label"].lower()
-                if any(k in lbl for k in ai_keywords):
-                    a_p += float(r["score"])
-                else:
-                    r_p += float(r["score"])
-            
-            total = a_p + r_p
-            return a_p / total if total > 0 else 0.0
-
-        ai_kws_1 = ("deepfake", "fake", "ai", "artificial")
-        ai_kws_2 = ("fake", "ai", "synthetic")
-
-        prob1 = _get_ai_prob(res1, ai_kws_1)
-        prob2 = _get_ai_prob(res2, ai_kws_2)
-
-        # Average the ensemble probabilities
-        ai_prob = (prob1 + prob2) / 2.0
-        real_prob = 1.0 - ai_prob
-
-        if ai_prob >= 0.85:
+        if deepfake_prob >= 0.60 and deepfake_prob >= ai_prob:
+            label = "Likely Deepfake / Manipulated"
+            flags.append(f"🟠 ML classifier detects deepfake-style manipulation ({deepfake_prob:.1%})")
+        elif ai_prob >= 0.85:
             label = "AI Generated"
-            flags.append(f"🔴 ML ensemble is highly confident this is AI-generated ({ai_prob:.1%})")
+            flags.append(f"🔴 ML classifier is highly confident this is AI-generated ({ai_prob:.1%})")
         elif ai_prob >= 0.65:
             label = "Likely AI"
-            flags.append(f"🟠 ML ensemble suspects AI generation ({ai_prob:.1%})")
+            flags.append(f"🟠 ML classifier suspects AI generation ({ai_prob:.1%})")
         elif ai_prob >= 0.45:
             label = "Uncertain"
-            flags.append(f"🟡 ML ensemble is uncertain (AI: {ai_prob:.1%}, Real: {real_prob:.1%})")
+            flags.append(f"🟡 ML classifier is uncertain (AI-generated: {ai_prob:.1%})")
         elif real_prob >= 0.65:
             label = "Likely Real"
-            flags.append(f"🟢 ML ensemble is confident this is a real photograph ({real_prob:.1%})")
+            flags.append(f"🟢 ML classifier favors a real photograph ({real_prob:.1%})")
         else:
             label = "Uncertain"
-            flags.append(f"ML ensemble uncertain (AI: {ai_prob:.1%}, Real: {real_prob:.1%})")
+            flags.append(f"ML classifier is inconclusive (AI-generated: {ai_prob:.1%}, real: {real_prob:.1%})")
 
         return {
-            "score":     round(ai_prob, 4),
-            "ai_prob":   round(ai_prob, 4),
+            "score": round(ai_prob, 4),
+            "ai_prob": round(ai_prob, 4),
+            "deepfake_prob": round(deepfake_prob, 4),
             "real_prob": round(real_prob, 4),
-            "flags":     flags,
+            "flags": flags,
             "available": True,
-            "label":     label,
+            "label": label,
         }
-
     except Exception as exc:
         return {
-            "score": 0.0, "ai_prob": 0.0, "real_prob": 1.0,
+            "score": 0.0, "ai_prob": 0.0, "deepfake_prob": 0.0, "real_prob": 1.0,
             "flags": [f"ML classifier error: {str(exc)[:120]}"],
             "available": False, "label": "error",
         }
